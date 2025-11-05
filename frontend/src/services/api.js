@@ -53,7 +53,36 @@ export const emailService = {
     api.post('/emails/send', data),
   
   updateEmail: (id, data) => 
-    api.patch(`/emails/${id}`, data),
+    api.patch(`/emails/${id}`, data), 
+
+  getAttachments: (emailId) => 
+    api.get(`/emails/${emailId}/attachments`),
+  
+  downloadAttachment: (emailId, attachmentId) => 
+    api.get(`/emails/${emailId}/attachments/${attachmentId}`, {
+      responseType: 'blob' // Important for file downloads
+    }),
+  
+  downloadAttachmentContent: (emailId, attachmentId) => 
+    api.get(`/emails/${emailId}/attachments/${attachmentId}/content`, {
+      responseType: 'blob'
+    }),
+  
+  getAttachmentInfo: (emailId, attachmentId) => 
+    api.get(`/emails/${emailId}/attachments/${attachmentId}`),
+
+  sendEmailWithAttachments: (formData) => 
+    api.post('/emails/send-with-attachments', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      timeout: 60000 // 60 seconds for large attachments
+    }),
+  
+  downloadAllAttachments: (emailId) => 
+    api.get(`/emails/${emailId}/attachments/download-all`, {
+      responseType: 'blob'
+    }),
   
   testPermissions: () => 
     api.get('/emails/test-permissions'),

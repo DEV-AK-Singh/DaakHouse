@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { emailService } from '../services/api';
+import AttachmentUpload from '../components/AttachmentUpload';
 
 function EmailComposer() {
   const location = useLocation();
@@ -14,6 +15,7 @@ function EmailComposer() {
     body: ''
   });
   
+  const [attachments, setAttachments] = useState([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
@@ -48,6 +50,10 @@ function EmailComposer() {
     setFormData({ ...formData, [field]: newRecipients });
   };
 
+  const handleAttachmentsChange = (newAttachments) => {
+    setAttachments(newAttachments);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSending(true);
@@ -65,15 +71,50 @@ function EmailComposer() {
         throw new Error('At least one "To" recipient is required');
       }
 
-      await emailService.sendEmail({
-        to: recipients.to,
-        cc: recipients.cc,
-        bcc: recipients.bcc,
-        subject: formData.subject.trim(),
-        body: formData.body
+      if (!formData.subject.trim()) {
+        throw new Error('Subject is required');
+      }
+
+      if (!formData.body.trim()) {
+        throw new Error('Email body is required');
+      }
+
+      // Create FormData for file upload
+      const formDataToSend = new FormData();
+      formDataToSend.append('to', JSON.stringify(recipients.to));
+      formDataToSend.append('subject', formData.subject.trim());
+      formDataToSend.append('body', formData.body);
+      
+      if (recipients.cc.length > 0) {
+        formDataToSend.append('cc', JSON.stringify(recipients.cc));
+      }
+      
+      if (recipients.bcc.length > 0) {
+        formDataToSend.append('bcc', JSON.stringify(recipients.bcc));
+      }
+
+      // Add attachments
+      attachments.forEach(attachment => {
+        formDataToSend.append('attachments', attachment.file);
       });
 
-      navigate('/emails');
+      console.log('Sending email with:', {
+        to: recipients.to,
+        subject: formData.subject,
+        bodyLength: formData.body.length,
+        attachmentCount: attachments.length
+      });
+
+      const response = await emailService.sendEmailWithAttachments(formDataToSend);
+      
+      console.log('Email sent successfully:', response.data);
+      
+      navigate('/emails', { 
+        state: { 
+          message: `Email sent successfully${attachments.length > 0 ? ` with ${attachments.length} attachment(s)` : ''}` 
+        } 
+      });
+      
     } catch (error) {
       console.error('Error sending email:', error);
       setError(error.response?.data?.error || error.message || 'Failed to send email');
@@ -100,7 +141,7 @@ function EmailComposer() {
             <button
               type="button"
               onClick={() => removeRecipient(field, index)}
-              className="px-3 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="px-3 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
             >
               Remove
             </button>
@@ -110,7 +151,7 @@ function EmailComposer() {
       <button
         type="button"
         onClick={() => addRecipient(field)}
-        className="text-sm text-blue-600 hover:text-blue-800 focus:outline-none"
+        className="text-sm text-blue-600 hover:text-blue-800 focus:outline-none transition-colors"
       >
         + Add another {label.toLowerCase()} recipient
       </button>
@@ -132,8 +173,15 @@ function EmailComposer() {
       </div>
 
       {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          <strong>Error: </strong> {error}
+        <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <strong>Error: </strong> {error}
+            </div>
+          </div>
         </div>
       )}
 
@@ -156,6 +204,13 @@ function EmailComposer() {
           />
         </div>
 
+        {/* Attachment Upload */}
+        <AttachmentUpload 
+          onAttachmentsChange={handleAttachmentsChange}
+          maxSizeMB={10}
+          maxFiles={10}
+        />
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Body:
@@ -170,18 +225,30 @@ function EmailComposer() {
           />
         </div>
 
+        {/* Sending Status */}
+        {sending && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg">
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+              <span>
+                Sending email{attachments.length > 0 ? ` with ${attachments.length} attachment(s)` : ''}...
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="flex space-x-4 pt-4 border-t border-gray-200">
           <button
             type="submit"
             disabled={sending}
-            className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+            className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
           >
-            {sending ? 'Sending...' : 'Send Email'}
+            {sending ? 'Sending...' : `Send Email${attachments.length > 0 ? ` (${attachments.length} attachment${attachments.length > 1 ? 's' : ''})` : ''}`}
           </button>
           <button
             type="button"
             onClick={() => navigate('/emails')}
-            className="bg-gray-600 text-white px-6 py-2 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+            className="bg-gray-600 text-white px-6 py-2 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
           >
             Cancel
           </button>
@@ -195,10 +262,11 @@ function EmailComposer() {
                 subject: '',
                 body: ''
               });
+              setAttachments([]);
             }}
-            className="bg-gray-300 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+            className="bg-gray-300 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
           >
-            Clear
+            Clear All
           </button>
         </div>
       </form>
